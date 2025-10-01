@@ -34,17 +34,14 @@ pub trait Processor: Send + Sync {
     fn name(&self) -> &str;
 }
 
-pub async fn process_files(
-    mut rx: mpsc::Receiver<PathBuf>,
-    backend: Box<dyn Processor>,
-) {
+pub async fn process_files(mut rx: mpsc::Receiver<PathBuf>, backend: &dyn Processor) {
     info!("Processor started with backend: {}", backend.name());
 
     while let Some(file_path) = rx.recv().await {
         info!("Received file from queue: {:?}", file_path);
         info!("Passing to backend '{}': {:?}", backend.name(), file_path);
 
-        match process_single_file(&file_path, &backend).await {
+        match process_single_file(&file_path, backend).await {
             Ok(output_path) => {
                 info!("✓ Processing complete: {:?}", file_path);
                 info!("  Output saved to: {:?}", output_path);
@@ -58,10 +55,7 @@ pub async fn process_files(
     info!("Processor shutting down");
 }
 
-async fn process_single_file(
-    file_path: &Path,
-    backend: &Box<dyn Processor>,
-) -> Result<PathBuf> {
+async fn process_single_file(file_path: &Path, backend: &dyn Processor) -> Result<PathBuf> {
     info!("Backend processing started: {:?}", file_path);
     let start_time = std::time::Instant::now();
 
@@ -98,7 +92,10 @@ async fn process_single_file(
     info!("Writing Markdown to: {:?}", md_output_path);
     tokio::fs::write(&md_output_path, markdown).await?;
 
-    info!("Results successfully saved ({}ms total)", start_time.elapsed().as_millis());
+    info!(
+        "Results successfully saved ({}ms total)",
+        start_time.elapsed().as_millis()
+    );
 
     Ok(json_output_path)
 }
@@ -117,7 +114,7 @@ fn format_as_markdown(result: &ProcessingResult) -> String {
     let mut markdown = String::new();
 
     // Header
-    markdown.push_str(&format!("# Scribe Processing Result\n\n"));
+    markdown.push_str("# Scribe Processing Result\n\n");
 
     // Metadata
     markdown.push_str("## Metadata\n\n");
@@ -130,7 +127,11 @@ fn format_as_markdown(result: &ProcessingResult) -> String {
     markdown.push_str("## Content\n\n");
 
     match &result.content {
-        ProcessedContent::Transcript { text, language, duration_ms } => {
+        ProcessedContent::Transcript {
+            text,
+            language,
+            duration_ms,
+        } => {
             markdown.push_str("### Transcript\n\n");
             if let Some(lang) = language {
                 markdown.push_str(&format!("**Language**: {}\n\n", lang));
@@ -139,11 +140,14 @@ fn format_as_markdown(result: &ProcessingResult) -> String {
                 let seconds = duration / 1000;
                 let minutes = seconds / 60;
                 let remaining_seconds = seconds % 60;
-                markdown.push_str(&format!("**Duration**: {}:{:02}\n\n", minutes, remaining_seconds));
+                markdown.push_str(&format!(
+                    "**Duration**: {}:{:02}\n\n",
+                    minutes, remaining_seconds
+                ));
             }
             markdown.push_str("---\n\n");
             markdown.push_str(text);
-            markdown.push_str("\n");
+            markdown.push('\n');
         }
         ProcessedContent::Description { description, tags } => {
             markdown.push_str("### Image Description\n\n");

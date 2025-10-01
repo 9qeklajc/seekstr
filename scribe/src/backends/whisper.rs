@@ -21,12 +21,17 @@ fn convert_audio_to_pcm(file_path: &Path) -> Result<Vec<f32>> {
     // Use ffmpeg to convert to raw PCM: 16kHz, mono, f32le
     let output = Command::new("ffmpeg")
         .args(&[
-            "-i", file_path.to_str().unwrap(),
-            "-f", "f32le",
-            "-ar", "16000",
-            "-ac", "1",
-            "-acodec", "pcm_f32le",
-            "-"
+            "-i",
+            file_path.to_str().unwrap(),
+            "-f",
+            "f32le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-acodec",
+            "pcm_f32le",
+            "-",
         ])
         .output()?;
 
@@ -74,7 +79,7 @@ impl WhisperBackend {
 
             let ctx = WhisperContext::new_with_params(
                 &model_path.to_string_lossy(),
-                WhisperContextParameters::default()
+                WhisperContextParameters::default(),
             )?;
 
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -130,13 +135,11 @@ impl Processor for WhisperBackend {
             }
         }
 
-        let extension = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         match extension {
-            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" | "avi" | "mov" | "mkv" | "wmv" => {
+            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" | "avi" | "mov"
+            | "mkv" | "wmv" => {
                 let text = self.transcribe_file(file_path).await?;
                 Ok(ProcessedContent::Transcript {
                     text,
@@ -144,12 +147,10 @@ impl Processor for WhisperBackend {
                     duration_ms: None,
                 })
             }
-            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
-                Ok(ProcessedContent::Description {
-                    description: "Whisper cannot process image files".to_string(),
-                    tags: vec!["unsupported".to_string()],
-                })
-            }
+            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => Ok(ProcessedContent::Description {
+                description: "Whisper cannot process image files".to_string(),
+                tags: vec!["unsupported".to_string()],
+            }),
             _ => Err(anyhow::anyhow!("Unsupported file type: {}", extension)),
         }
     }

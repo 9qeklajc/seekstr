@@ -92,7 +92,10 @@ impl OpenAIBackend {
         info!("OpenAI: Response received, parsing description");
         let result: VisionResponse = response.json().await?;
         let description = result.choices[0].message.content.clone();
-        info!("OpenAI: Description ready, {} characters", description.len());
+        info!(
+            "OpenAI: Description ready, {} characters",
+            description.len()
+        );
         Ok(description)
     }
 }
@@ -100,10 +103,7 @@ impl OpenAIBackend {
 #[async_trait]
 impl Processor for OpenAIBackend {
     async fn process(&self, file_path: &Path) -> Result<ProcessedContent> {
-        let extension = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         debug!("Processing file with OpenAI: {:?}", file_path);
 
@@ -123,12 +123,11 @@ impl Processor for OpenAIBackend {
                     tags: vec![],
                 })
             }
-            "avi" | "mov" | "mkv" | "wmv" => {
-                Ok(ProcessedContent::Description {
-                    description: "Video file processing not yet implemented for OpenAI backend".to_string(),
-                    tags: vec!["video".to_string()],
-                })
-            }
+            "avi" | "mov" | "mkv" | "wmv" => Ok(ProcessedContent::Description {
+                description: "Video file processing not yet implemented for OpenAI backend"
+                    .to_string(),
+                tags: vec!["video".to_string()],
+            }),
             _ => Err(anyhow::anyhow!("Unsupported file type: {}", extension)),
         }
     }
