@@ -1,8 +1,8 @@
 use crate::{
+    EventSearchRequest, EventSearchResponse,
     embeddings::EmbeddingService,
     lancedb_store::LanceDBStore,
     nostr::{NostrEvent, NostrEventWithEmbedding},
-    relay_search::{EventSearchRequest, EventSearchResponse},
 };
 use anyhow::Result;
 

@@ -38,9 +38,7 @@ pub fn create_backend(
                 anyhow::anyhow!("Vision backend requires VISION_MODEL in .env file")
             })?;
 
-            Ok(Box::new(vision::VisionBackend::new(
-                api_key, api_url, model,
-            )))
+            Ok(Box::new(vision::VisionBackend::new(api_key, api_url, model)))
         }
         _ => Err(anyhow::anyhow!(
             "Unknown backend: {}. Available backends: openai, whisper, ort, vision",
