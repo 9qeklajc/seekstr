@@ -1,0 +1,51 @@
+[package]
+name = "lancedb-search"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+anyhow.workspace = true
+
+rig-core = { version = "0.21", features = ["all"] }
+nostr-sdk = "0.43"
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+lancedb = "0.22"
+arrow-array = "55"
+arrow-schema = "55"
+futures = "0.3"
+
+tracing-subscriber = "0.3"
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[[example]]
+name = "relay_search_demo"
+path = "examples/relay_search_demo.rs"
+
+[[example]]
+name = "simple_demo"
+path = "examples/simple_demo.rs"
+
+[[example]]
+name = "post_and_search"
+path = "examples/post_and_search.rs"
+
+[[example]]
+name = "embedding_search_example"
+path = "examples/embedding_search_example.rs"
+
+[[example]]
+name = "debug_embedding_dimensions"
+path = "examples/debug_embedding_dimensions.rs"
+
+[[example]]
+name = "error_handling_test"
+path = "examples/error_handling_test.rs"

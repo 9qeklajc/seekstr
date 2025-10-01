@@ -1,22 +1,27 @@
-mod watcher;
-mod processor;
 mod backends;
 mod config;
+mod processor;
+mod watcher;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::{Path, PathBuf};
-use tracing::{info, error};
-use config::{Config, BackendConfig, FileTypeConfig};
-use processor::{Processor, ProcessedContent};
+use config::{BackendConfig, Config, FileTypeConfig};
+use processor::ProcessedContent;
 #[allow(unused_imports)]
 use processor::ProcessedContent as _;
+use std::path::{Path, PathBuf};
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "scribe")]
 #[command(about = "Processes media files to generate transcripts or descriptions")]
 struct Args {
-    #[arg(short, long, default_value = "openai", help = "Backend to use (openai, whisper, ort, vision)")]
+    #[arg(
+        short,
+        long,
+        default_value = "openai",
+        help = "Backend to use (openai, whisper, ort, vision)"
+    )]
     backend: String,
 
     #[arg(short, long, help = "OpenAI API key (or set OPENAI_API_KEY env var)")]
@@ -54,7 +59,9 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let api_key = args.api_key.or_else(|| std::env::var("OPENAI_API_KEY").ok());
+    let api_key = args
+        .api_key
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok());
 
     info!("Starting scribe with backend: {}", args.backend);
 
@@ -77,9 +84,18 @@ async fn main() -> Result<()> {
             };
 
             info!("Watching directory: {:?}", config.watch_dir);
-            info!("Supported audio extensions: {:?}", config.file_types.audio_extensions);
-            info!("Supported video extensions: {:?}", config.file_types.video_extensions);
-            info!("Supported image extensions: {:?}", config.file_types.image_extensions);
+            info!(
+                "Supported audio extensions: {:?}",
+                config.file_types.audio_extensions
+            );
+            info!(
+                "Supported video extensions: {:?}",
+                config.file_types.video_extensions
+            );
+            info!(
+                "Supported image extensions: {:?}",
+                config.file_types.image_extensions
+            );
 
             let (tx, rx) = tokio::sync::mpsc::channel(100);
 
@@ -92,7 +108,7 @@ async fn main() -> Result<()> {
             });
 
             let processor_handle = tokio::spawn(async move {
-                processor::process_files(rx, backend).await;
+                processor::process_files(rx, &*backend).await;
             });
 
             tokio::select! {
@@ -127,7 +143,8 @@ async fn main() -> Result<()> {
             });
 
             let parent = file.parent().unwrap_or(std::path::Path::new("."));
-            let stem = file.file_stem()
+            let stem = file
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("output");
 
@@ -138,7 +155,8 @@ async fn main() -> Result<()> {
 
             // Save Markdown output
             let md_path = parent.join(format!("{}-scribe.md", stem));
-            let markdown = format_file_result_as_markdown(&file, backend.name(), &timestamp, &result);
+            let markdown =
+                format_file_result_as_markdown(&file, backend.name(), &timestamp, &result);
             std::fs::write(&md_path, markdown)?;
             info!("Markdown output saved to: {:?}", md_path);
 
@@ -177,7 +195,11 @@ fn format_file_result_as_markdown(
     markdown.push_str("## Content\n\n");
 
     match content {
-        ProcessedContent::Transcript { text, language, duration_ms } => {
+        ProcessedContent::Transcript {
+            text,
+            language,
+            duration_ms,
+        } => {
             markdown.push_str("### Transcript\n\n");
             if let Some(lang) = language {
                 markdown.push_str(&format!("**Language**: {}\n\n", lang));
@@ -186,11 +208,14 @@ fn format_file_result_as_markdown(
                 let seconds = duration / 1000;
                 let minutes = seconds / 60;
                 let remaining_seconds = seconds % 60;
-                markdown.push_str(&format!("**Duration**: {}:{:02}\n\n", minutes, remaining_seconds));
+                markdown.push_str(&format!(
+                    "**Duration**: {}:{:02}\n\n",
+                    minutes, remaining_seconds
+                ));
             }
             markdown.push_str("---\n\n");
             markdown.push_str(text);
-            markdown.push_str("\n");
+            markdown.push('\n');
         }
         ProcessedContent::Description { description, tags } => {
             markdown.push_str("### Image Description\n\n");

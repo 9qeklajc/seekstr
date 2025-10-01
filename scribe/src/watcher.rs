@@ -1,9 +1,9 @@
+use crate::config::FileTypeConfig;
 use anyhow::Result;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
-use crate::config::FileTypeConfig;
 
 pub async fn watch_directory(
     watch_dir: PathBuf,

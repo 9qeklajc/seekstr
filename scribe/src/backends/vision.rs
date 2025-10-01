@@ -5,7 +5,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 pub struct VisionBackend {
     api_key: String,
@@ -37,9 +37,11 @@ impl VisionBackend {
         let output = Command::new("magick")
             .args(&[
                 file_path.to_str().unwrap(),
-                "-resize", "1120x1120>",  // Resize only if larger than 1120px
-                "-quality", "90",          // Keep good quality
-                "PNG:-"                     // Output to stdout as PNG
+                "-resize",
+                "1120x1120>", // Resize only if larger than 1120px
+                "-quality",
+                "90",    // Keep good quality
+                "PNG:-", // Output to stdout as PNG
             ])
             .output()?;
 
@@ -48,9 +50,11 @@ impl VisionBackend {
             let output = Command::new("convert")
                 .args(&[
                     file_path.to_str().unwrap(),
-                    "-resize", "1120x1120>",
-                    "-quality", "90",
-                    "PNG:-"
+                    "-resize",
+                    "1120x1120>",
+                    "-quality",
+                    "90",
+                    "PNG:-",
                 ])
                 .output()?;
 
@@ -130,7 +134,10 @@ impl VisionBackend {
 
         // Log a sample of the request for debugging
         let request_json = serde_json::to_string_pretty(&request_body)?;
-        debug!("Request body (first 500 chars): {}", &request_json[..request_json.len().min(500)]);
+        debug!(
+            "Request body (first 500 chars): {}",
+            &request_json[..request_json.len().min(500)]
+        );
 
         let response = client
             .post(url.clone())
@@ -182,10 +189,7 @@ impl Processor for VisionBackend {
     async fn process(&self, file_path: &Path) -> Result<ProcessedContent> {
         info!("Vision backend processing: {:?}", file_path);
 
-        let extension = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         match extension {
             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
@@ -195,12 +199,11 @@ impl Processor for VisionBackend {
                     tags: vec![],
                 })
             }
-            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" | "avi" | "mov" | "mkv" | "wmv" => {
-                Ok(ProcessedContent::Description {
-                    description: "Vision backend cannot process audio/video files".to_string(),
-                    tags: vec!["unsupported".to_string()],
-                })
-            }
+            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" | "avi" | "mov"
+            | "mkv" | "wmv" => Ok(ProcessedContent::Description {
+                description: "Vision backend cannot process audio/video files".to_string(),
+                tags: vec!["unsupported".to_string()],
+            }),
             _ => Err(anyhow::anyhow!("Unsupported file type: {}", extension)),
         }
     }
