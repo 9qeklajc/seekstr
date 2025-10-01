@@ -1,9 +1,10 @@
-use crate::processor::{ProcessedContent, Processor};
+use crate::processor::{
+    FileType, ProcessedContent, Processor, generate_summary, get_file_type_from_url,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use tracing::{debug, info};
 
 pub struct OpenAIBackend {
@@ -19,17 +20,17 @@ impl OpenAIBackend {
         }
     }
 
-    async fn transcribe_audio(&self, file_path: &Path) -> Result<String> {
-        info!("OpenAI: Transcribing audio file: {:?}", file_path);
-        let file_bytes = tokio::fs::read(file_path).await?;
-        info!("OpenAI: File loaded, size: {} bytes", file_bytes.len());
+    async fn transcribe_audio(&self, url: &str) -> Result<String> {
+        info!("OpenAI: Transcribing audio from URL: {}", url);
+        let file_bytes = self.download_file(url).await?;
+        info!("OpenAI: File downloaded, size: {} bytes", file_bytes.len());
 
         let form = reqwest::multipart::Form::new()
             .text("model", "whisper-1")
             .part(
                 "file",
                 reqwest::multipart::Part::bytes(file_bytes)
-                    .file_name(file_path.file_name().unwrap().to_string_lossy().to_string())
+                    .file_name(self.extract_filename_from_url(url))
                     .mime_str("audio/mpeg")?,
             );
 
@@ -48,19 +49,16 @@ impl OpenAIBackend {
         Ok(result.text)
     }
 
-    async fn describe_image(&self, file_path: &Path) -> Result<String> {
-        info!("OpenAI: Describing image file: {:?}", file_path);
-        let image_bytes = tokio::fs::read(file_path).await?;
-        info!("OpenAI: Image loaded, size: {} bytes", image_bytes.len());
+    async fn describe_image(&self, url: &str) -> Result<String> {
+        info!("OpenAI: Describing image from URL: {}", url);
+        let image_bytes = self.download_file(url).await?;
+        info!(
+            "OpenAI: Image downloaded, size: {} bytes",
+            image_bytes.len()
+        );
         let base64_image = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
 
-        let mime_type = match file_path.extension().and_then(|e| e.to_str()) {
-            Some("jpg") | Some("jpeg") => "image/jpeg",
-            Some("png") => "image/png",
-            Some("gif") => "image/gif",
-            Some("webp") => "image/webp",
-            _ => "image/jpeg",
-        };
+        let mime_type = self.get_mime_type_from_url(url);
 
         let request_body = VisionRequest {
             model: "gpt-4o-mini".to_string(),
@@ -98,37 +96,100 @@ impl OpenAIBackend {
         );
         Ok(description)
     }
+
+    async fn download_file(&self, url: &str) -> Result<Vec<u8>> {
+        info!("Getting file from URL: {}", url);
+
+        if url.starts_with("file://") {
+            // Handle local file URLs
+            let file_path = &url[7..]; // Remove "file://" prefix
+            let bytes = tokio::fs::read(file_path).await?;
+            Ok(bytes)
+        } else {
+            // Handle HTTP/HTTPS URLs
+            let response = self.client.get(url).send().await?;
+
+            if !response.status().is_success() {
+                return Err(anyhow::anyhow!(
+                    "Failed to download file: HTTP {}",
+                    response.status()
+                ));
+            }
+
+            let bytes = response.bytes().await?;
+            Ok(bytes.to_vec())
+        }
+    }
+
+    fn extract_filename_from_url(&self, url: &str) -> String {
+        if let Ok(parsed_url) = url::Url::parse(url) {
+            if let Some(path) = parsed_url.path_segments() {
+                if let Some(filename) = path.last() {
+                    if !filename.is_empty() {
+                        return filename.to_string();
+                    }
+                }
+            }
+        }
+        "file".to_string()
+    }
+
+    fn get_mime_type_from_url(&self, url: &str) -> &'static str {
+        let url_lower = url.to_lowercase();
+        if url_lower.contains(".jpg") || url_lower.contains(".jpeg") {
+            "image/jpeg"
+        } else if url_lower.contains(".png") {
+            "image/png"
+        } else if url_lower.contains(".gif") {
+            "image/gif"
+        } else if url_lower.contains(".webp") {
+            "image/webp"
+        } else if url_lower.contains(".bmp") {
+            "image/bmp"
+        } else {
+            "image/jpeg"
+        }
+    }
 }
 
 #[async_trait]
 impl Processor for OpenAIBackend {
-    async fn process(&self, file_path: &Path) -> Result<ProcessedContent> {
-        let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    async fn process(&self, url: &str) -> Result<ProcessedContent> {
+        let file_type = get_file_type_from_url(url);
 
-        debug!("Processing file with OpenAI: {:?}", file_path);
+        debug!("Processing URL with OpenAI: {}", url);
 
-        match extension {
-            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" => {
-                let text = self.transcribe_audio(file_path).await?;
+        match file_type {
+            FileType::Audio | FileType::Video => {
+                let text = self.transcribe_audio(url).await?;
+
+                // Generate summary for the transcription
+                let summary = match generate_summary(&text, &self.api_key).await {
+                    Ok(summary) => {
+                        info!("Generated summary for transcription");
+                        Some(summary)
+                    }
+                    Err(e) => {
+                        info!("Failed to generate summary: {}", e);
+                        None
+                    }
+                };
+
                 Ok(ProcessedContent::Transcript {
                     text,
                     language: None,
                     duration_ms: None,
+                    summary,
                 })
             }
-            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
-                let description = self.describe_image(file_path).await?;
+            FileType::Image => {
+                let description = self.describe_image(url).await?;
                 Ok(ProcessedContent::Description {
                     description,
                     tags: vec![],
                 })
             }
-            "avi" | "mov" | "mkv" | "wmv" => Ok(ProcessedContent::Description {
-                description: "Video file processing not yet implemented for OpenAI backend"
-                    .to_string(),
-                tags: vec!["video".to_string()],
-            }),
-            _ => Err(anyhow::anyhow!("Unsupported file type: {}", extension)),
+            FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }
 

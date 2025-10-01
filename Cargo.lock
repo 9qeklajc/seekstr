@@ -4102,6 +4102,7 @@ dependencies = [
  "futures",
  "lancedb",
  "nostr-sdk",
+ "regex",
  "rig-core",
  "serde",
  "serde_json",
@@ -4109,6 +4110,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -6033,9 +6035,11 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "whisper-rs",
  "whisper-rs-sys",
 ]

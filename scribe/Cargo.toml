@@ -19,6 +19,8 @@ base64 = "0.22"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenv = "0.15"
+url = "2.5"
+tempfile = "3.23"
 whisper-rs = { version = "0.11", optional = true }
 whisper-rs-sys = { version = "0.9", optional = true }
 

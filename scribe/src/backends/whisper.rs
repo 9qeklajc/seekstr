@@ -1,7 +1,9 @@
 #[cfg(feature = "whisper")]
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-use crate::processor::{ProcessedContent, Processor};
+use crate::processor::{
+    FileType, ProcessedContent, Processor, generate_summary, get_file_type_from_url,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -62,7 +64,7 @@ impl WhisperBackend {
     pub fn new(model_path: Option<PathBuf>) -> Self {
         let model_path = model_path.unwrap_or_else(|| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".cache/whisper/ggml-base.bin")
+            PathBuf::from(home).join(".cache/whisper/ggml-large-v3.bin")
         });
 
         Self { model_path }
@@ -114,12 +116,82 @@ impl WhisperBackend {
             "Whisper support not compiled. Build with --features whisper (requires libclang-dev)"
         ))
     }
+
+    async fn transcribe_url(&self, url: &str) -> Result<String> {
+        info!("Whisper backend: processing audio from URL: {}", url);
+
+        // Check if we have a working Whisper model
+        if !self.model_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Whisper model not found at {:?}. Please download a model from https://huggingface.co/ggerganov/whisper.cpp or use OpenAI backend for transcription",
+                self.model_path
+            ));
+        }
+
+        #[cfg(feature = "whisper")]
+        {
+            info!("Whisper model found at: {:?}", self.model_path);
+
+            // Download the audio file from URL
+            info!("Downloading audio file from URL: {}", url);
+            let client = reqwest::Client::new();
+            let response = client.get(url).send().await?;
+
+            if !response.status().is_success() {
+                return Err(anyhow::anyhow!(
+                    "Failed to download audio file: HTTP {}",
+                    response.status()
+                ));
+            }
+
+            let bytes = response.bytes().await?;
+            info!("Downloaded {} bytes from URL", bytes.len());
+
+            // Create temporary file with appropriate extension
+            let file_extension = self.extract_extension_from_url(url);
+            let temp_file = tempfile::NamedTempFile::with_suffix(&format!(".{}", file_extension))?;
+            let temp_path = temp_file.path();
+
+            // Write downloaded content to temporary file
+            tokio::fs::write(temp_path, &bytes).await?;
+            info!("Saved audio to temporary file: {:?}", temp_path);
+
+            // Process the temporary file using existing transcribe_file method
+            let transcription = self.transcribe_file(temp_path).await?;
+
+            info!(
+                "Transcription completed, {} characters",
+                transcription.len()
+            );
+            Ok(transcription)
+        }
+        #[cfg(not(feature = "whisper"))]
+        {
+            Err(anyhow::anyhow!(
+                "Whisper support not compiled. Build with --features whisper to enable local transcription, or use OpenAI backend"
+            ))
+        }
+    }
+
+    fn extract_extension_from_url(&self, url: &str) -> String {
+        if let Ok(parsed_url) = url::Url::parse(url) {
+            if let Some(path) = parsed_url.path_segments() {
+                if let Some(filename) = path.last() {
+                    if let Some(dot_pos) = filename.rfind('.') {
+                        return filename[dot_pos + 1..].to_string();
+                    }
+                }
+            }
+        }
+        // Default to mp3 if we can't determine the extension
+        "mp3".to_string()
+    }
 }
 
 #[async_trait]
 impl Processor for WhisperBackend {
-    async fn process(&self, file_path: &Path) -> Result<ProcessedContent> {
-        info!("Whisper backend processing: {:?}", file_path);
+    async fn process(&self, url: &str) -> Result<ProcessedContent> {
+        info!("Whisper backend processing: {}", url);
 
         #[cfg(feature = "whisper")]
         {
@@ -135,23 +207,41 @@ impl Processor for WhisperBackend {
             }
         }
 
-        let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let file_type = get_file_type_from_url(url);
 
-        match extension {
-            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" | "avi" | "mov"
-            | "mkv" | "wmv" => {
-                let text = self.transcribe_file(file_path).await?;
+        match file_type {
+            FileType::Audio | FileType::Video => {
+                let text = self.transcribe_url(url).await?;
+
+                // Generate summary if OpenAI API key is available
+                let summary = if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+                    match generate_summary(&text, &api_key).await {
+                        Ok(summary) => {
+                            info!("Generated summary for transcription");
+                            Some(summary)
+                        }
+                        Err(e) => {
+                            info!("Failed to generate summary: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    info!("No OPENAI_API_KEY found, skipping summary generation");
+                    None
+                };
+
                 Ok(ProcessedContent::Transcript {
                     text,
                     language: Some("auto-detected".to_string()),
                     duration_ms: None,
+                    summary,
                 })
             }
-            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => Ok(ProcessedContent::Description {
+            FileType::Image => Ok(ProcessedContent::Description {
                 description: "Whisper cannot process image files".to_string(),
                 tags: vec!["unsupported".to_string()],
             }),
-            _ => Err(anyhow::anyhow!("Unsupported file type: {}", extension)),
+            FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }
 
