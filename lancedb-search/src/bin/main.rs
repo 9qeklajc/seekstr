@@ -7,8 +7,8 @@ use axum::{
     routing::{get, post},
 };
 use lancedb_search::{
-    embedding_service::EmbeddingSearchService, embeddings::EmbeddingService, nostr::NostrEvent,
-    relay_search::EventSearchRequest,
+    EventSearchRequest, embedding_service::EmbeddingSearchService, embeddings::EmbeddingService,
+    nostr::NostrEvent,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -64,13 +64,8 @@ async fn get_events(
     State(state): State<AppState>,
     Query(params): Query<serde_json::Value>,
 ) -> Result<Json<SemanticSearchResponse>, StatusCode> {
-    println!("Received query params: {:?}", params);
-
-    let request: EventSearchRequest = serde_json::from_value(params).map_err(|e| {
-        eprintln!("Failed to parse EventSearchRequest: {}", e);
-        eprintln!("Expected fields: language, author, limit, event_kinds, search");
-        StatusCode::BAD_REQUEST
-    })?;
+    let request: EventSearchRequest =
+        serde_json::from_value(params).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     match state.embedding_service.semantic_search(&request).await {
         Ok(response) => {
@@ -110,8 +105,6 @@ async fn semantic_search(
     State(state): State<AppState>,
     Query(params): Query<serde_json::Value>,
 ) -> Result<Json<SemanticSearchResponse>, StatusCode> {
-    println!("Semantic search params: {:?}", params);
-
     let request: SemanticSearchRequest = serde_json::from_value(params).map_err(|e| {
         eprintln!("Failed to parse SemanticSearchRequest: {}", e);
         eprintln!("Expected fields: query, limit");
