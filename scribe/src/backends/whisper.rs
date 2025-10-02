@@ -71,7 +71,7 @@ impl WhisperBackend {
     }
 
     #[cfg(feature = "whisper")]
-    async fn transcribe_file(&self, file_path: &Path) -> Result<String> {
+    pub async fn transcribe_file(&self, file_path: &Path) -> Result<String> {
         info!("Starting transcription of file: {:?}", file_path);
 
         // First, check the duration of the audio/video file
@@ -134,7 +134,10 @@ impl WhisperBackend {
         let chunk_duration = 30.0; // 30 seconds per chunk
         let num_chunks = (duration / chunk_duration).ceil() as usize;
 
-        info!("Splitting into {} chunks of {} seconds each", num_chunks, chunk_duration);
+        info!(
+            "Splitting into {} chunks of {} seconds each",
+            num_chunks, chunk_duration
+        );
 
         let mut all_transcriptions = Vec::new();
 
@@ -142,10 +145,17 @@ impl WhisperBackend {
             let start_time = chunk_index as f64 * chunk_duration;
             let end_time = ((chunk_index + 1) as f64 * chunk_duration).min(duration);
 
-            info!("Processing chunk {} ({:.1}s - {:.1}s)", chunk_index + 1, start_time, end_time);
+            info!(
+                "Processing chunk {} ({:.1}s - {:.1}s)",
+                chunk_index + 1,
+                start_time,
+                end_time
+            );
 
             // Create chunk file
-            let chunk_file = self.create_audio_chunk(file_path, start_time, end_time, chunk_index).await?;
+            let chunk_file = self
+                .create_audio_chunk(file_path, start_time, end_time, chunk_index)
+                .await?;
 
             // Transcribe the chunk
             let chunk_transcription = self.transcribe_single_file(chunk_file.path()).await?;
@@ -155,12 +165,19 @@ impl WhisperBackend {
                 all_transcriptions.push(chunk_transcription);
             }
 
-            info!("Chunk {} transcribed: {} characters", chunk_index + 1, transcription_len);
+            info!(
+                "Chunk {} transcribed: {} characters",
+                chunk_index + 1,
+                transcription_len
+            );
         }
 
         // Combine all transcriptions
         let combined_transcription = all_transcriptions.join(" ");
-        info!("Combined transcription: {} characters total", combined_transcription.len());
+        info!(
+            "Combined transcription: {} characters total",
+            combined_transcription.len()
+        );
 
         Ok(combined_transcription)
     }
@@ -171,9 +188,12 @@ impl WhisperBackend {
 
         let output = Command::new("ffprobe")
             .args(&[
-                "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
                 file_path.to_str().unwrap(),
             ])
             .output()?;
@@ -192,20 +212,33 @@ impl WhisperBackend {
     }
 
     #[cfg(feature = "whisper")]
-    async fn create_audio_chunk(&self, file_path: &Path, start_time: f64, end_time: f64, chunk_index: usize) -> Result<tempfile::NamedTempFile> {
+    async fn create_audio_chunk(
+        &self,
+        file_path: &Path,
+        start_time: f64,
+        end_time: f64,
+        chunk_index: usize,
+    ) -> Result<tempfile::NamedTempFile> {
         use std::process::Command;
 
         let duration = end_time - start_time;
-        let chunk_file = tempfile::NamedTempFile::with_suffix(&format!("_chunk_{}.wav", chunk_index))?;
+        let chunk_file =
+            tempfile::NamedTempFile::with_suffix(&format!("_chunk_{}.wav", chunk_index))?;
 
         let output = Command::new("ffmpeg")
             .args(&[
-                "-i", file_path.to_str().unwrap(),
-                "-ss", &start_time.to_string(),
-                "-t", &duration.to_string(),
-                "-acodec", "pcm_s16le",
-                "-ar", "16000",
-                "-ac", "1",
+                "-i",
+                file_path.to_str().unwrap(),
+                "-ss",
+                &start_time.to_string(),
+                "-t",
+                &duration.to_string(),
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
                 "-y", // Overwrite output file
                 chunk_file.path().to_str().unwrap(),
             ])
@@ -222,7 +255,8 @@ impl WhisperBackend {
     }
 
     #[cfg(not(feature = "whisper"))]
-    async fn transcribe_file(&self, _file_path: &Path) -> Result<String> {
+    #[allow(dead_code)]
+    pub async fn transcribe_file(&self, _file_path: &Path) -> Result<String> {
         Err(anyhow::anyhow!(
             "Whisper support not compiled. Build with --features whisper (requires libclang-dev)"
         ))
@@ -284,15 +318,14 @@ impl WhisperBackend {
         }
     }
 
+    #[allow(dead_code)]
     fn extract_extension_from_url(&self, url: &str) -> String {
-        if let Ok(parsed_url) = url::Url::parse(url) {
-            if let Some(path) = parsed_url.path_segments() {
-                if let Some(filename) = path.last() {
-                    if let Some(dot_pos) = filename.rfind('.') {
-                        return filename[dot_pos + 1..].to_string();
-                    }
-                }
-            }
+        if let Ok(parsed_url) = url::Url::parse(url)
+            && let Some(mut path) = parsed_url.path_segments()
+            && let Some(filename) = path.next_back()
+            && let Some(dot_pos) = filename.rfind('.')
+        {
+            return filename[dot_pos + 1..].to_string();
         }
         // Default to mp3 if we can't determine the extension
         "mp3".to_string()
@@ -352,6 +385,9 @@ impl Processor for WhisperBackend {
                 description: "Whisper cannot process image files".to_string(),
                 tags: vec!["unsupported".to_string()],
             }),
+            FileType::YouTube => Err(anyhow::anyhow!(
+                "Whisper backend cannot process YouTube URLs directly. Use the YouTube backend instead."
+            )),
             FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }

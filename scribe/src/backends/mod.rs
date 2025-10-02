@@ -2,6 +2,7 @@ mod openai;
 mod ort;
 mod vision;
 mod whisper;
+mod youtube;
 
 use crate::processor::{FileType, Processor, get_file_type_from_url};
 use anyhow::Result;
@@ -43,8 +44,9 @@ pub fn create_backend(
                 api_key, api_url, model,
             )))
         }
+        "youtube" => Ok(Box::new(youtube::YouTubeBackend::new())),
         _ => Err(anyhow::anyhow!(
-            "Unknown backend: {}. Available backends: openai, whisper, ort, vision",
+            "Unknown backend: {}. Available backends: openai, whisper, ort, vision, youtube",
             backend_type
         )),
     }
@@ -69,6 +71,10 @@ pub fn create_backend_auto(
             } else {
                 "openai"
             }
+        }
+        FileType::YouTube => {
+            // YouTube URLs are handled by the dedicated YouTube backend
+            "youtube"
         }
         FileType::Audio | FileType::Video => {
             // Try Whisper first, but check if it's viable

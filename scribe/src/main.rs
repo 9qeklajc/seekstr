@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
 
             let (parent, stem) = if url.starts_with("http") {
                 // For URLs, extract filename and save in current directory
-                let url_path = url.split('/').last().unwrap_or("output");
+                let url_path = url.split('/').next_back().unwrap_or("output");
                 let stem = if let Some(pos) = url_path.rfind('.') {
                     &url_path[..pos]
                 } else {

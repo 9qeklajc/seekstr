@@ -35,6 +35,7 @@ pub enum FileType {
     Audio,
     Video,
     Image,
+    YouTube,
     Unknown,
 }
 
@@ -54,10 +55,24 @@ fn is_file_url(url: &str) -> bool {
     }
 }
 
+/// Check if a URL is a YouTube URL
+fn is_youtube_url(url: &str) -> bool {
+    let url_lower = url.to_lowercase();
+    url_lower.contains("youtube.com/watch")
+        || url_lower.contains("youtu.be/")
+        || url_lower.contains("youtube.com/embed/")
+        || url_lower.contains("youtube.com/v/")
+}
+
 /// Determine file type from URL based on extension and MIME type patterns
 pub fn get_file_type_from_url(url: &str) -> FileType {
     if !is_http_url(url) && !is_file_url(url) {
         return FileType::Unknown;
+    }
+
+    // Check for YouTube URLs first
+    if is_youtube_url(url) {
+        return FileType::YouTube;
     }
 
     let url_lower = url.to_lowercase();
@@ -107,16 +122,15 @@ pub fn get_file_type_string(url: &str) -> String {
         FileType::Audio => "audio".to_string(),
         FileType::Video => "video".to_string(),
         FileType::Image => "image".to_string(),
+        FileType::YouTube => "youtube".to_string(),
         FileType::Unknown => {
             // Try to extract extension from URL path
-            if let Ok(parsed_url) = Url::parse(url) {
-                if let Some(path) = parsed_url.path_segments() {
-                    if let Some(last_segment) = path.last() {
-                        if let Some(dot_pos) = last_segment.rfind('.') {
-                            return last_segment[dot_pos + 1..].to_string();
-                        }
-                    }
-                }
+            if let Ok(parsed_url) = Url::parse(url)
+                && let Some(mut path) = parsed_url.path_segments()
+                && let Some(last_segment) = path.next_back()
+                && let Some(dot_pos) = last_segment.rfind('.')
+            {
+                return last_segment[dot_pos + 1..].to_string();
             }
             "unknown".to_string()
         }

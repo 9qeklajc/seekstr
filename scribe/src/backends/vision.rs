@@ -27,6 +27,7 @@ impl VisionBackend {
         }
     }
 
+    #[allow(dead_code)]
     async fn prepare_image(&self, file_path: &Path) -> Result<Vec<u8>> {
         use std::process::Command;
 
@@ -35,7 +36,7 @@ impl VisionBackend {
         // Always resize to ensure image fits within 1120x1120
         // The ">" flag means only shrink if larger than specified size
         let output = Command::new("magick")
-            .args(&[
+            .args([
                 file_path.to_str().unwrap(),
                 "-resize",
                 "1120x1120>", // Resize only if larger than 1120px
@@ -48,7 +49,7 @@ impl VisionBackend {
         if !output.status.success() {
             // Fallback to convert command
             let output = Command::new("convert")
-                .args(&[
+                .args([
                     file_path.to_str().unwrap(),
                     "-resize",
                     "1120x1120>",
@@ -71,6 +72,7 @@ impl VisionBackend {
         }
     }
 
+    #[allow(dead_code)]
     async fn describe_image(&self, file_path: &Path) -> Result<String> {
         // Read and potentially resize the image
         let image_data = self.prepare_image(file_path).await?;
@@ -211,7 +213,7 @@ impl VisionBackend {
 
         let client = reqwest::Client::new();
         let response = client
-            .post(&format!("{}/v1/chat/completions", self.api_url))
+            .post(format!("{}/v1/chat/completions", self.api_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&request_body)
@@ -247,7 +249,7 @@ impl VisionBackend {
 
         if url.starts_with("file://") {
             // Handle local file URLs
-            let file_path = &url[7..]; // Remove "file://" prefix
+            let file_path = url.strip_prefix("file://").unwrap();
             let bytes = tokio::fs::read(file_path).await?;
             Ok(bytes)
         } else {
@@ -318,6 +320,9 @@ impl Processor for VisionBackend {
                 description: "Vision backend cannot process audio/video files".to_string(),
                 tags: vec!["unsupported".to_string()],
             }),
+            FileType::YouTube => Err(anyhow::anyhow!(
+                "Vision backend cannot process YouTube URLs. Use the YouTube backend instead."
+            )),
             FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }

@@ -127,14 +127,13 @@ pub fn extract_imeta_dimensions(event: &NostrEvent) -> Vec<Dimensions> {
         for entry in tag.iter().skip(1) {
             if let Some(dim_str) = entry.strip_prefix("dim ") {
                 let dim_str = dim_str.trim();
-                if let Some(captures) = dim_regex.captures(dim_str) {
-                    if let (Ok(width), Ok(height)) =
+                if let Some(captures) = dim_regex.captures(dim_str)
+                    && let (Ok(width), Ok(height)) =
                         (captures[1].parse::<u32>(), captures[2].parse::<u32>())
-                    {
-                        if width > 0 && height > 0 {
-                            dimensions.push(Dimensions { width, height });
-                        }
-                    }
+                    && width > 0
+                    && height > 0
+                {
+                    dimensions.push(Dimensions { width, height });
                 }
             }
         }

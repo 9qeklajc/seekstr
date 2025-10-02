@@ -32,6 +32,9 @@ impl Processor for OrtBackend {
                 description: format!("ORT backend placeholder - would process image: {}", url),
                 tags: vec!["ort".to_string(), "placeholder".to_string()],
             }),
+            FileType::YouTube => Err(anyhow::anyhow!(
+                "ORT backend cannot process YouTube URLs. Use the YouTube backend instead."
+            )),
             FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }

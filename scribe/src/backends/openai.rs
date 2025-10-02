@@ -102,7 +102,7 @@ impl OpenAIBackend {
 
         if url.starts_with("file://") {
             // Handle local file URLs
-            let file_path = &url[7..]; // Remove "file://" prefix
+            let file_path = url.strip_prefix("file://").unwrap();
             let bytes = tokio::fs::read(file_path).await?;
             Ok(bytes)
         } else {
@@ -122,14 +122,12 @@ impl OpenAIBackend {
     }
 
     fn extract_filename_from_url(&self, url: &str) -> String {
-        if let Ok(parsed_url) = url::Url::parse(url) {
-            if let Some(path) = parsed_url.path_segments() {
-                if let Some(filename) = path.last() {
-                    if !filename.is_empty() {
-                        return filename.to_string();
-                    }
-                }
-            }
+        if let Ok(parsed_url) = url::Url::parse(url)
+            && let Some(mut path) = parsed_url.path_segments()
+            && let Some(filename) = path.next_back()
+            && !filename.is_empty()
+        {
+            return filename.to_string();
         }
         "file".to_string()
     }
@@ -189,6 +187,9 @@ impl Processor for OpenAIBackend {
                     tags: vec![],
                 })
             }
+            FileType::YouTube => Err(anyhow::anyhow!(
+                "OpenAI backend cannot process YouTube URLs directly. Use the YouTube backend instead."
+            )),
             FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }

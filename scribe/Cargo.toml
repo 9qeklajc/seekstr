@@ -21,6 +21,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenv = "0.15"
 url = "2.5"
 tempfile = "3.23"
+regex = "1.0"
+rusty_ytdl = "0.7"
+yt-transcript-rs = "0.1.8"
+futures-util = "0.3"
 whisper-rs = { version = "0.11", optional = true }
 whisper-rs-sys = { version = "0.9", optional = true }
 
