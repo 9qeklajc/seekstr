@@ -1,0 +1,16 @@
+../target/
+../.git/
+**/target/
+**/.git/
+*.log
+.env
+.DS_Store
+node_modules/
+.dockerignore
+Dockerfile
+docker-compose.yml
+*.md
+.gitignore
+lancedb_data/
+**/*.bak
+**/*.tmp
