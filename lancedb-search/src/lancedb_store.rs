@@ -161,6 +161,17 @@ impl LanceDBStore {
         query_embedding: &[f32],
         limit: usize,
     ) -> Result<Vec<String>> {
+        self.search_similar_with_range(query_embedding, limit, None, Some(0.8))
+            .await
+    }
+
+    pub async fn search_similar_with_range(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        lower_bound: Option<f32>,
+        upper_bound: Option<f32>,
+    ) -> Result<Vec<String>> {
         let table = self
             .connection
             .open_table(&self.table_name)
@@ -170,6 +181,7 @@ impl LanceDBStore {
         let results = table
             .query()
             .nearest_to(query_embedding)?
+            .distance_range(lower_bound, upper_bound)
             .limit(limit)
             .execute()
             .await?;
@@ -200,6 +212,31 @@ impl LanceDBStore {
         min_created_at: Option<i64>,
         max_created_at: Option<i64>,
     ) -> Result<Vec<String>> {
+        self.search_similar_with_filters_and_range(
+            query_embedding,
+            limit,
+            author,
+            kind,
+            min_created_at,
+            max_created_at,
+            None,
+            Some(0.8),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn search_similar_with_filters_and_range(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        author: Option<&str>,
+        kind: Option<i32>,
+        min_created_at: Option<i64>,
+        max_created_at: Option<i64>,
+        lower_bound: Option<f32>,
+        upper_bound: Option<f32>,
+    ) -> Result<Vec<String>> {
         let table = self
             .connection
             .open_table(&self.table_name)
@@ -210,6 +247,7 @@ impl LanceDBStore {
             .query()
             .nearest_to(query_embedding)?
             .column("content_embedding")
+            .distance_range(lower_bound, upper_bound)
             .limit(limit);
 
         let mut filter_clauses = Vec::new();
