@@ -53,7 +53,10 @@ impl LanceDBStore {
             Field::new("tags", DataType::Utf8, false),
             Field::new(
                 "content_embedding",
-                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), 768),
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float32, true)),
+                    1024,
+                ),
                 false,
             ),
         ]))
@@ -77,7 +80,7 @@ impl LanceDBStore {
                         .map(|&x| Some(x))
                         .collect::<Vec<_>>(),
                 )),
-                768,
+                1024,
             );
 
         let batch = RecordBatch::try_new(
@@ -131,7 +134,7 @@ impl LanceDBStore {
             arrow_array::types::Float32Type,
             _,
             _,
-        >(embeddings.into_iter().map(Some), 768);
+        >(embeddings.into_iter().map(Some), 1024);
 
         let batch = RecordBatch::try_new(
             schema,
@@ -169,8 +172,8 @@ impl LanceDBStore {
         &self,
         query_embedding: &[f32],
         limit: usize,
-        lower_bound: Option<f32>,
-        upper_bound: Option<f32>,
+        _lower_bound: Option<f32>,
+        _upper_bound: Option<f32>,
     ) -> Result<Vec<String>> {
         let table = self
             .connection
@@ -181,7 +184,6 @@ impl LanceDBStore {
         let results = table
             .query()
             .nearest_to(query_embedding)?
-            .distance_range(lower_bound, upper_bound)
             .limit(limit)
             .execute()
             .await?;
@@ -234,8 +236,8 @@ impl LanceDBStore {
         kind: Option<i32>,
         min_created_at: Option<i64>,
         max_created_at: Option<i64>,
-        lower_bound: Option<f32>,
-        upper_bound: Option<f32>,
+        _lower_bound: Option<f32>,
+        _upper_bound: Option<f32>,
     ) -> Result<Vec<String>> {
         let table = self
             .connection
@@ -247,7 +249,6 @@ impl LanceDBStore {
             .query()
             .nearest_to(query_embedding)?
             .column("content_embedding")
-            .distance_range(lower_bound, upper_bound)
             .limit(limit);
 
         let mut filter_clauses = Vec::new();
@@ -279,6 +280,7 @@ impl LanceDBStore {
         let batches = results.try_collect::<Vec<_>>().await?;
 
         for batch in batches {
+            println!("{:?}", batch);
             if let Some(id_column) = batch.column_by_name("id")
                 && let Some(string_array) = id_column.as_any().downcast_ref::<StringArray>()
             {
