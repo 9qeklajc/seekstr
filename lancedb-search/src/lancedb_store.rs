@@ -1,13 +1,23 @@
 use crate::nostr::NostrEventWithEmbedding;
 use anyhow::Result;
 use arrow_array::{
-    Array, FixedSizeListArray, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+    Array, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, RecordBatchIterator,
+    StringArray,
 };
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{Connection, connect};
 use std::sync::Arc;
+
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.54;
+
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub event_id: String,
+    pub distance: f32,
+    pub relevance_score: f32,
+}
 
 pub struct LanceDBStore {
     connection: Connection,
@@ -248,8 +258,8 @@ impl LanceDBStore {
         let mut vector_query = table
             .query()
             .nearest_to(query_embedding)?
-            .column("content_embedding")
-            .limit(limit);
+            .column("content_embedding");
+        // .limit(limit);
 
         let mut filter_clauses = Vec::new();
 
@@ -280,13 +290,53 @@ impl LanceDBStore {
         let batches = results.try_collect::<Vec<_>>().await?;
 
         for batch in batches {
-            println!("{:?}", batch);
-            if let Some(id_column) = batch.column_by_name("id")
-                && let Some(string_array) = id_column.as_any().downcast_ref::<StringArray>()
-            {
-                for i in 0..string_array.len() {
-                    let id = string_array.value(i).to_string();
-                    event_ids.push(id);
+            if let (Some(id_column), Some(distance_column)) = (
+                batch.column_by_name("id"),
+                batch.column_by_name("_distance"),
+            ) {
+                if let (Some(string_array), Some(distance_array)) = (
+                    id_column.as_any().downcast_ref::<StringArray>(),
+                    distance_column.as_any().downcast_ref::<Float32Array>(),
+                ) {
+                    let mut results_with_scores: Vec<(String, f32)> = Vec::new();
+
+                    for i in 0..string_array.len() {
+                        let id = string_array.value(i).to_string();
+                        let distance = distance_array.value(i);
+                        results_with_scores.push((id, distance));
+                    }
+
+                    results_with_scores
+                        .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                    println!("Results sorted by relevance (distance), filtered by relevance > 0.54:");
+                    for (i, (id, distance)) in results_with_scores.iter().enumerate() {
+                        let relevance_score = (1.0 / (1.0 + distance)).max(0.0).min(1.0);
+
+                        if relevance_score > MIN_RELEVANCE_THRESHOLD {
+                            println!(
+                                "  {}: {} (distance: {:.4}, relevance: {:.4})",
+                                event_ids.len() + 1,
+                                id,
+                                distance,
+                                relevance_score
+                            );
+                            event_ids.push(id.clone());
+                        } else {
+                            println!(
+                                "  Filtered out: {} (distance: {:.4}, relevance: {:.4}) - below threshold",
+                                id,
+                                distance,
+                                relevance_score
+                            );
+                        }
+                    }
+                } else if let Some(string_array) = id_column.as_any().downcast_ref::<StringArray>()
+                {
+                    for i in 0..string_array.len() {
+                        let id = string_array.value(i).to_string();
+                        event_ids.push(id);
+                    }
                 }
             }
         }
@@ -295,6 +345,24 @@ impl LanceDBStore {
     }
 
     pub async fn create_index(&self) -> Result<()> {
+        self.create_index_with_type(lancedb::index::Index::Auto)
+            .await
+    }
+
+    pub async fn create_index_with_type(&self, index_type: lancedb::index::Index) -> Result<()> {
+        let table = self
+            .connection
+            .open_table(&self.table_name)
+            .execute()
+            .await?;
+        table
+            .create_index(&["content_embedding"], index_type)
+            .execute()
+            .await?;
+        Ok(())
+    }
+
+    pub async fn create_ivf_flat_index(&self, _num_partitions: u32) -> Result<()> {
         let table = self
             .connection
             .open_table(&self.table_name)
@@ -305,5 +373,13 @@ impl LanceDBStore {
             .execute()
             .await?;
         Ok(())
+    }
+
+    pub async fn create_ivf_flat_index_with_distance(
+        &self,
+        _num_partitions: u32,
+        _distance_type: lancedb::DistanceType,
+    ) -> Result<()> {
+        self.create_index().await
     }
 }

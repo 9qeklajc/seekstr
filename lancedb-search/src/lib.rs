@@ -46,6 +46,19 @@ pub struct EventSearchResponse {
     pub total_found: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EventSearchResult {
+    pub event_id: String,
+    pub relevance_score: f32,
+    pub distance: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EventSearchResponseWithScores {
+    pub results: Vec<EventSearchResult>,
+    pub total_found: usize,
+}
+
 impl EventSearchRequest {
     pub fn get_search_query(&self) -> Option<&str> {
         self.search.as_deref()

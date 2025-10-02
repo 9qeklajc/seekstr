@@ -1,7 +1,7 @@
 use crate::{
-    EventSearchRequest, EventSearchResponse,
+    EventSearchRequest, EventSearchResponse, EventSearchResponseWithScores, EventSearchResult,
     embeddings::EmbeddingService,
-    lancedb_store::LanceDBStore,
+    lancedb_store::{LanceDBStore, SearchResult},
     nostr::{NostrEvent, NostrEventWithEmbedding},
 };
 use anyhow::Result;
@@ -166,6 +166,7 @@ impl EmbeddingSearchService {
             }
         }
     }
+
 }
 
 #[cfg(test)]
