@@ -1,0 +1,23 @@
+services:
+  lancedb-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3009:3009"
+    environment:
+      - RUST_LOG=info
+      - OPENAI_API_KEY=
+      - OPENAI_BASE_URL=
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text:latest}
+      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
+      - SERVER_PORT=${SERVER_PORT:-3009}
+      - LANCEDB_PATH=${LANCEDB_PATH:-./lancedb_data}
+      - LANCEDB_TABLE_NAME=${LANCEDB_TABLE_NAME:-nostr_events}
+    volumes:
+      - lancedb_data:/app/lancedb_data
+    restart: unless-stopped
+
+volumes:
+  lancedb_data:
+    driver: local
