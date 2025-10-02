@@ -166,7 +166,6 @@ impl EmbeddingSearchService {
             }
         }
     }
-
 }
 
 #[cfg(test)]

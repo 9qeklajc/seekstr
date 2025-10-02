@@ -10,7 +10,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{Connection, connect};
 use std::sync::Arc;
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.54;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.51;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -172,16 +172,16 @@ impl LanceDBStore {
     pub async fn search_similar(
         &self,
         query_embedding: &[f32],
-        limit: usize,
+        _limit: usize,
     ) -> Result<Vec<String>> {
-        self.search_similar_with_range(query_embedding, limit, None, Some(0.8))
+        self.search_similar_with_range(query_embedding, 1000, None, Some(0.8))
             .await
     }
 
     pub async fn search_similar_with_range(
         &self,
         query_embedding: &[f32],
-        limit: usize,
+        _limit: usize,
         _lower_bound: Option<f32>,
         _upper_bound: Option<f32>,
     ) -> Result<Vec<String>> {
@@ -191,12 +191,7 @@ impl LanceDBStore {
             .execute()
             .await?;
 
-        let results = table
-            .query()
-            .nearest_to(query_embedding)?
-            .limit(limit)
-            .execute()
-            .await?;
+        let results = table.query().nearest_to(query_embedding)?.execute().await?;
 
         let mut event_ids = Vec::new();
         let batches = results.try_collect::<Vec<_>>().await?;
@@ -218,7 +213,7 @@ impl LanceDBStore {
     pub async fn search_similar_with_filters(
         &self,
         query_embedding: &[f32],
-        limit: usize,
+        _limit: usize,
         author: Option<&str>,
         kind: Option<i32>,
         min_created_at: Option<i64>,
@@ -226,7 +221,7 @@ impl LanceDBStore {
     ) -> Result<Vec<String>> {
         self.search_similar_with_filters_and_range(
             query_embedding,
-            limit,
+            1000,
             author,
             kind,
             min_created_at,
@@ -241,7 +236,7 @@ impl LanceDBStore {
     pub async fn search_similar_with_filters_and_range(
         &self,
         query_embedding: &[f32],
-        limit: usize,
+        _limit: usize,
         author: Option<&str>,
         kind: Option<i32>,
         min_created_at: Option<i64>,
@@ -259,7 +254,6 @@ impl LanceDBStore {
             .query()
             .nearest_to(query_embedding)?
             .column("content_embedding");
-        // .limit(limit);
 
         let mut filter_clauses = Vec::new();
 
@@ -309,8 +303,10 @@ impl LanceDBStore {
                     results_with_scores
                         .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-                    println!("Results sorted by relevance (distance), filtered by relevance > 0.54:");
-                    for (i, (id, distance)) in results_with_scores.iter().enumerate() {
+                    println!(
+                        "Results sorted by relevance (distance), filtered by relevance > 0.54:"
+                    );
+                    for (_i, (id, distance)) in results_with_scores.iter().enumerate() {
                         let relevance_score = (1.0 / (1.0 + distance)).max(0.0).min(1.0);
 
                         if relevance_score > MIN_RELEVANCE_THRESHOLD {
@@ -325,9 +321,7 @@ impl LanceDBStore {
                         } else {
                             println!(
                                 "  Filtered out: {} (distance: {:.4}, relevance: {:.4}) - below threshold",
-                                id,
-                                distance,
-                                relevance_score
+                                id, distance, relevance_score
                             );
                         }
                     }
@@ -341,6 +335,7 @@ impl LanceDBStore {
             }
         }
 
+        println!("{:?}", event_ids);
         Ok(event_ids)
     }
 
