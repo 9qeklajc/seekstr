@@ -26,6 +26,7 @@
           clang
           llvmPackages.libclang
           llvmPackages.libcxxClang
+          protobuf
         ];
 
         buildInputs = with pkgs; [

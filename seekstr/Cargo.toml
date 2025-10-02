@@ -11,9 +11,6 @@ chrono = { workspace = true }
 anyhow = { workspace = true }
 eventflow = { workspace = true }
 
-# Scribe dependency
-scribe = { path = "../scribe" }
-
 # Nostr dependencies
 nostr = { workspace = true }
 nostr-sdk = { workspace = true }
@@ -24,3 +21,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+reqwest = { version = "0.11", features = ["json"] }
+base64 = "0.21"
+image = "0.24"

@@ -13,18 +13,11 @@ pub struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendConfig {
-    #[serde(rename = "type")]
-    pub backend_type: BackendType,
-    pub openai_api_key: Option<String>,
+    pub nsec: Option<String>,
+    pub vision_api_url: String,
+    pub vision_api_key: String,
+    pub vision_model: String,
     pub whisper_model_path: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BackendType {
-    OpenAI,
-    Whisper,
-    Auto,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,8 +58,10 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backend: BackendConfig {
-                backend_type: BackendType::Auto,
-                openai_api_key: None,
+                nsec: None,
+                vision_api_url: "https://ecash.server.otrta.me".to_string(),
+                vision_api_key: "".to_string(),
+                vision_model: "llama3.2-vision:latest".to_string(),
                 whisper_model_path: None,
             },
             relays: RelayConfig {
@@ -126,22 +121,14 @@ impl Config {
     /// Validate the configuration
     pub fn validate(&self) -> Result<()> {
         // Validate backend configuration
-        match self.backend.backend_type {
-            BackendType::OpenAI => {
-                if self.backend.openai_api_key.is_none() {
-                    anyhow::bail!("OpenAI backend requires openai_api_key to be set");
-                }
-            }
-            BackendType::Whisper => {
-                if self.backend.whisper_model_path.is_none() {
-                    anyhow::bail!("Whisper backend requires whisper_model_path to be set");
-                }
-            }
-            BackendType::Auto => {
-                if self.backend.openai_api_key.is_none() && self.backend.whisper_model_path.is_none() {
-                    anyhow::bail!("Auto backend requires either openai_api_key or whisper_model_path to be set");
-                }
-            }
+        if self.backend.vision_api_url.is_empty() {
+            anyhow::bail!("Vision backend requires vision_api_url to be set");
+        }
+        if self.backend.vision_api_key.is_empty() {
+            anyhow::bail!("Vision backend requires vision_api_key to be set");
+        }
+        if self.backend.vision_model.is_empty() {
+            anyhow::bail!("Vision backend requires vision_model to be set");
         }
 
         // Validate relay configuration

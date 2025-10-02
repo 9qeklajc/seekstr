@@ -1,10 +1,10 @@
 mod config;
-mod mediaprocessor;
+mod image_processor;
 
 use anyhow::Result;
-use config::{BackendType, Config};
+use config::Config;
 use eventflow::{Config as EventFlowConfig, ProcessingState, RelayRouter, SubFilter};
-use mediaprocessor::MediaProcessor;
+use image_processor::ImageProcessor;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,38 +31,17 @@ async fn main() -> Result<()> {
         .with_env_filter(config.build_rust_log())
         .init();
 
-    info!("Starting Seekstr Media Processor for Nostr");
+    info!("Starting Seekstr Image Processor for Nostr");
     info!("Configuration loaded from: {}", config_path);
+    info!("Using Vision backend at: {}", config.backend.vision_api_url);
 
-    // Determine which scribe backend to use based on configuration
-    let backend = match config.backend.backend_type {
-        BackendType::OpenAI => {
-            let api_key = config.backend.openai_api_key
-                .ok_or_else(|| anyhow::anyhow!("OpenAI API key not configured"))?;
-            info!("Using OpenAI backend for media processing");
-            scribe::backends::create_backend("openai", Some(api_key), None)?
-        }
-        BackendType::Whisper => {
-            let model_path = config.backend.whisper_model_path
-                .ok_or_else(|| anyhow::anyhow!("Whisper model path not configured"))?;
-            info!("Using Whisper backend with model at: {}", model_path);
-            scribe::backends::create_backend("whisper", None, Some(PathBuf::from(model_path)))?
-        }
-        BackendType::Auto => {
-            if let Some(api_key) = config.backend.openai_api_key {
-                info!("Auto mode: Using OpenAI backend");
-                scribe::backends::create_backend("openai", Some(api_key), None)?
-            } else if let Some(model_path) = config.backend.whisper_model_path {
-                info!("Auto mode: Using Whisper backend with model at: {}", model_path);
-                scribe::backends::create_backend("whisper", None, Some(PathBuf::from(model_path)))?
-            } else {
-                anyhow::bail!("Auto backend requires either openai_api_key or whisper_model_path to be configured");
-            }
-        }
-    };
-
-    // Create media processor
-    let media_processor = Arc::new(MediaProcessor::new(backend)?);
+    // Create image processor with vision backend configuration
+    let image_processor = Arc::new(ImageProcessor::new(
+        config.backend.vision_api_url.clone(),
+        config.backend.vision_api_key.clone(),
+        config.backend.vision_model.clone(),
+        config.backend.nsec.clone(),
+    )?);
 
     // Convert our filters to eventflow SubFilter format if they exist
     let event_filters = config.relays.filters.as_ref().map(|filters| {
@@ -93,7 +72,7 @@ async fn main() -> Result<()> {
     // Create the relay router using builder pattern with custom processor
     let router = RelayRouter::builder(eventflow_config)
         .with_state(state)
-        .add_processor(media_processor, config.relays.sinks.clone())
+        .add_processor(image_processor, config.relays.sinks.clone())
         .build()
         .await?;
 
