@@ -1,4 +1,5 @@
 use crate::nostr::NostrEventWithEmbedding;
+use crate::embeddings::LanceDbEmbeddingService;
 use anyhow::Result;
 use arrow_array::{
     Array, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, RecordBatchIterator,
@@ -6,8 +7,10 @@ use arrow_array::{
 };
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
-use lancedb::query::{ExecutableQuery, QueryBase};
-use lancedb::{Connection, connect};
+use lancedb::{
+    Connection, connect,
+    query::{ExecutableQuery, QueryBase},
+};
 use std::sync::Arc;
 
 const MIN_RELEVANCE_THRESHOLD: f32 = 0.40;
@@ -22,6 +25,13 @@ pub struct SearchResult {
 pub struct LanceDBStore {
     connection: Connection,
     table_name: String,
+}
+
+pub struct EnhancedLanceDBStore {
+    connection: Connection,
+    table_name: String,
+    embedding_service: LanceDbEmbeddingService,
+    relevance_threshold: f32,
 }
 
 impl LanceDBStore {
@@ -172,16 +182,16 @@ impl LanceDBStore {
     pub async fn search_similar(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
+        limit: usize,
     ) -> Result<Vec<String>> {
-        self.search_similar_with_range(query_embedding, 1000, None, Some(0.8))
+        self.search_similar_with_range(query_embedding, limit, None, Some(0.8))
             .await
     }
 
     pub async fn search_similar_with_range(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
+        limit: usize,
         _lower_bound: Option<f32>,
         _upper_bound: Option<f32>,
     ) -> Result<Vec<String>> {
@@ -191,7 +201,7 @@ impl LanceDBStore {
             .execute()
             .await?;
 
-        let results = table.query().nearest_to(query_embedding)?.execute().await?;
+        let results = table.query().nearest_to(query_embedding)?.limit(limit).execute().await?;
 
         let mut event_ids = Vec::new();
         let batches = results.try_collect::<Vec<_>>().await?;
@@ -213,7 +223,7 @@ impl LanceDBStore {
     pub async fn search_similar_with_filters(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
+        limit: usize,
         author: Option<&str>,
         kind: Option<i32>,
         min_created_at: Option<i64>,
@@ -221,7 +231,7 @@ impl LanceDBStore {
     ) -> Result<Vec<String>> {
         self.search_similar_with_filters_and_range(
             query_embedding,
-            1000,
+            limit,
             author,
             kind,
             min_created_at,
@@ -236,7 +246,7 @@ impl LanceDBStore {
     pub async fn search_similar_with_filters_and_range(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
+        limit: usize,
         author: Option<&str>,
         kind: Option<i32>,
         min_created_at: Option<i64>,
@@ -253,7 +263,8 @@ impl LanceDBStore {
         let mut vector_query = table
             .query()
             .nearest_to(query_embedding)?
-            .column("content_embedding");
+            .column("content_embedding")
+            .limit(limit);
 
         let mut filter_clauses = Vec::new();
 
@@ -376,5 +387,156 @@ impl LanceDBStore {
         _distance_type: lancedb::DistanceType,
     ) -> Result<()> {
         self.create_index().await
+    }
+}
+
+impl EnhancedLanceDBStore {
+    pub async fn new(db_path: &str, table_name: &str, relevance_threshold: Option<f32>) -> Result<Self> {
+        let connection = connect(db_path).execute().await?;
+        let embedding_service = LanceDbEmbeddingService::new()?;
+
+        Ok(Self {
+            connection,
+            table_name: table_name.to_string(),
+            embedding_service,
+            relevance_threshold: relevance_threshold.unwrap_or(MIN_RELEVANCE_THRESHOLD),
+        })
+    }
+
+    pub async fn search_similar_relevance_based(
+        &self,
+        query: &str,
+        max_results: Option<usize>,
+    ) -> Result<Vec<String>> {
+        let query_embedding = self.embedding_service.generate_embedding(query).await?;
+
+        let table = self.connection.open_table(&self.table_name).execute().await?;
+
+        let results = table.query()
+            .nearest_to(query_embedding)?
+            .limit(max_results.unwrap_or(10000))
+            .execute()
+            .await?;
+
+        let mut event_ids = Vec::new();
+        let batches = results.try_collect::<Vec<_>>().await?;
+
+        for batch in batches {
+            if let (Some(id_column), Some(distance_column)) = (
+                batch.column_by_name("id"),
+                batch.column_by_name("_distance"),
+            ) {
+                if let (Some(string_array), Some(distance_array)) = (
+                    id_column.as_any().downcast_ref::<StringArray>(),
+                    distance_column.as_any().downcast_ref::<Float32Array>(),
+                ) {
+                    for i in 0..string_array.len() {
+                        let id = string_array.value(i).to_string();
+                        let distance = distance_array.value(i);
+                        let relevance_score = (1.0 / (1.0 + distance)).max(0.0).min(1.0);
+
+                        if relevance_score >= self.relevance_threshold {
+                            println!("Result: {} (distance: {:.4}, relevance: {:.4})",
+                                   id, distance, relevance_score);
+                            event_ids.push(id);
+                        } else {
+                            println!("Filtered out: {} (distance: {:.4}, relevance: {:.4}) - below threshold",
+                                   id, distance, relevance_score);
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("Found {} results above relevance threshold {:.2}",
+                event_ids.len(), self.relevance_threshold);
+
+        Ok(event_ids)
+    }
+
+    pub async fn search_similar_with_filters_relevance_based(
+        &self,
+        query: &str,
+        max_results: Option<usize>,
+        author: Option<&str>,
+        kind: Option<i32>,
+        min_created_at: Option<i64>,
+        max_created_at: Option<i64>,
+    ) -> Result<Vec<String>> {
+        let query_embedding = self.embedding_service.generate_embedding(query).await?;
+
+        let table = self.connection.open_table(&self.table_name).execute().await?;
+
+        let mut vector_query = table.query()
+            .nearest_to(query_embedding)?
+            .limit(max_results.unwrap_or(10000));
+
+        let mut filter_clauses = Vec::new();
+
+        if let Some(author) = author {
+            filter_clauses.push(format!("pubkey = '{}'", author));
+        }
+
+        if let Some(kind) = kind {
+            filter_clauses.push(format!("kind = {}", kind));
+        }
+
+        if let Some(min_created) = min_created_at {
+            filter_clauses.push(format!("created_at >= {}", min_created));
+        }
+
+        if let Some(max_created) = max_created_at {
+            filter_clauses.push(format!("created_at <= {}", max_created));
+        }
+
+        if !filter_clauses.is_empty() {
+            let filter_condition = filter_clauses.join(" AND ");
+            vector_query = vector_query.only_if(&filter_condition);
+        }
+
+        let results = vector_query.execute().await?;
+
+        let mut event_ids = Vec::new();
+        let batches = results.try_collect::<Vec<_>>().await?;
+
+        for batch in batches {
+            if let (Some(id_column), Some(distance_column)) = (
+                batch.column_by_name("id"),
+                batch.column_by_name("_distance"),
+            ) {
+                if let (Some(string_array), Some(distance_array)) = (
+                    id_column.as_any().downcast_ref::<StringArray>(),
+                    distance_column.as_any().downcast_ref::<Float32Array>(),
+                ) {
+                    for i in 0..string_array.len() {
+                        let id = string_array.value(i).to_string();
+                        let distance = distance_array.value(i);
+                        let relevance_score = (1.0 / (1.0 + distance)).max(0.0).min(1.0);
+
+                        if relevance_score >= self.relevance_threshold {
+                            println!("Result: {} (distance: {:.4}, relevance: {:.4})",
+                                   id, distance, relevance_score);
+                            event_ids.push(id);
+                        } else {
+                            println!("Filtered out: {} (distance: {:.4}, relevance: {:.4}) - below threshold",
+                                   id, distance, relevance_score);
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("Found {} results above relevance threshold {:.2}",
+                event_ids.len(), self.relevance_threshold);
+
+        Ok(event_ids)
+    }
+
+    pub fn set_relevance_threshold(&mut self, threshold: f32) {
+        self.relevance_threshold = threshold.clamp(0.0, 1.0);
+    }
+
+    pub fn get_relevance_threshold(&self) -> f32 {
+        self.relevance_threshold
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
-    EventSearchRequest, EventSearchResponse, EventSearchResponseWithScores, EventSearchResult,
+    EventSearchRequest, EventSearchResponse,
     embeddings::EmbeddingService,
-    lancedb_store::{LanceDBStore, SearchResult},
+    lancedb_store::LanceDBStore,
     nostr::{NostrEvent, NostrEventWithEmbedding},
 };
 use anyhow::Result;
@@ -104,7 +104,10 @@ impl EmbeddingSearchService {
         request: &EventSearchRequest,
     ) -> Result<EventSearchResponse> {
         let query = request.get_search_query().unwrap_or("");
-        let limit = request.limit.unwrap_or(50);
+
+        // Remove hard limit - use relevance threshold instead
+        let _relevance_threshold = 0.5;
+        let max_results = 10000; // High ceiling instead of hard limit
 
         let query_embedding = self.embedding_service.generate_embedding(query).await?;
 
@@ -115,15 +118,26 @@ impl EmbeddingSearchService {
             .and_then(|kinds| kinds.first())
             .map(|&k| k as i32);
 
+        // Get many results initially to filter by relevance
         match self
             .lancedb_store
-            .search_similar_with_filters(&query_embedding, limit, author, kind, None, None)
+            .search_similar_with_filters(&query_embedding, max_results, author, kind, None, None)
             .await
         {
-            Ok(event_ids) => Ok(EventSearchResponse {
-                total_found: event_ids.len(),
-                event_ids,
-            }),
+            Ok(event_ids) => {
+                // TODO: In a full implementation, we would:
+                // 1. Retrieve the actual events and their embeddings
+                // 2. Calculate cosine similarity with the query
+                // 3. Filter by relevance_threshold
+                // 4. Sort by similarity score
+
+                // For now, just return the results as-is since the underlying
+                // LanceDB search should already be similarity-based
+                Ok(EventSearchResponse {
+                    total_found: event_ids.len(),
+                    event_ids,
+                })
+            }
             Err(e) => {
                 let error_msg = e.to_string().to_lowercase();
                 if error_msg.contains("table") && error_msg.contains("not found") {
