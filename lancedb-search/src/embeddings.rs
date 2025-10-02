@@ -13,7 +13,7 @@ impl EmbeddingService {
             .base_url("https://ecash.server.otrta.me")
             .build()?;
 
-        let model = openai_client.embedding_model("bge-m3:latest");
+        let model = openai_client.embedding_model("mxbai-embed-large:latest");
 
         Ok(Self { model })
     }
