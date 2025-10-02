@@ -7,7 +7,10 @@ use axum::{
     routing::{get, post},
 };
 use lancedb_search::{
-    EventSearchRequest, embedding_service::EmbeddingSearchService, embeddings::EmbeddingService,
+    EventSearchRequest,
+    embedding_service::EmbeddingSearchService,
+    embeddings::EmbeddingService,
+    event_queue::{EventProcessor, EventQueue},
     nostr::NostrEvent,
 };
 use serde::{Deserialize, Serialize};
@@ -17,6 +20,7 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 struct AppState {
     embedding_service: Arc<EmbeddingSearchService>,
+    event_queue: EventQueue,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,7 +47,17 @@ async fn main() -> Result<()> {
 
     embedding_service.create_index().await.ok();
 
-    let state = AppState { embedding_service };
+    let (event_queue, receiver) = EventQueue::new();
+    let processor = EventProcessor::new(embedding_service.clone(), receiver);
+
+    tokio::spawn(async move {
+        processor.start_processing().await;
+    });
+
+    let state = AppState {
+        embedding_service,
+        event_queue,
+    };
 
     let app = Router::new()
         .route("/events", get(get_events))
@@ -86,16 +100,15 @@ async fn post_event(
     State(state): State<AppState>,
     Json(request): Json<NostrEvent>,
 ) -> Result<(), StatusCode> {
-    println!("Received query params: {:?}", request);
+    println!("Received event for queueing: {}", request.id);
 
-    match state
-        .embedding_service
-        .embed_and_store_event(&request)
-        .await
-    {
-        Ok(()) => Ok(()),
+    match state.event_queue.enqueue(request) {
+        Ok(()) => {
+            println!("Event queued successfully");
+            Ok(())
+        }
         Err(e) => {
-            eprintln!("Post error: {}", e);
+            eprintln!("Failed to queue event: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

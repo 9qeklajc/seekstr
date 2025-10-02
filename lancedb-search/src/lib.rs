@@ -3,9 +3,11 @@ use serde::{Deserialize, Serialize};
 pub mod collect;
 pub mod embedding_service;
 pub mod embeddings;
+pub mod event_queue;
 pub mod initialize;
 pub mod lancedb_store;
 pub mod nostr;
+pub mod url_extractor;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EventSearchRequest {
