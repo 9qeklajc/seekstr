@@ -7,13 +7,13 @@ edition = "2024"
 tokio = { workspace = true, features = ["sync"] }
 serde.workspace = true
 serde_json.workspace = true
+nostr-sdk.workspace = true
 
 anyhow.workspace = true
 url = "2.5"
 regex = "1.11"
 
 rig-core = { version = "0.21", features = ["all"] }
-nostr-sdk = "0.43"
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }

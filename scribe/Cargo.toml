@@ -3,6 +3,14 @@ name = "scribe"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "scribe"
+path = "src/lib.rs"
+
+[[bin]]
+name = "scribe"
+path = "src/main.rs"
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true

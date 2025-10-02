@@ -1,0 +1,26 @@
+[package]
+name = "seekstr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+eventflow = { workspace = true }
+
+# Scribe dependency
+scribe = { path = "../scribe" }
+
+# Nostr dependencies
+nostr = { workspace = true }
+nostr-sdk = { workspace = true }
+
+# Additional dependencies
+regex = "1.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "0.8"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
