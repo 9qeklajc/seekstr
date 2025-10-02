@@ -7,7 +7,7 @@ use tracing::{debug, info, warn};
 
 pub async fn watch_directory(
     watch_dir: PathBuf,
-    tx: mpsc::Sender<PathBuf>,
+    tx: mpsc::Sender<String>,
     file_types: FileTypeConfig,
 ) -> Result<()> {
     let (notify_tx, mut notify_rx) = mpsc::channel(100);
@@ -50,7 +50,7 @@ pub async fn watch_directory(
     Ok(())
 }
 
-async fn process_path(path: &Path, tx: &mpsc::Sender<PathBuf>, file_types: &FileTypeConfig) {
+async fn process_path(path: &Path, tx: &mpsc::Sender<String>, file_types: &FileTypeConfig) {
     if !path.is_file() {
         debug!("Path is not a file: {:?}", path);
         return;
@@ -73,10 +73,11 @@ async fn process_path(path: &Path, tx: &mpsc::Sender<PathBuf>, file_types: &File
     }
 
     info!("Queueing file for processing: {:?}", path);
-    if let Err(e) = tx.send(path.to_path_buf()).await {
-        warn!("Failed to send file path to processor: {}", e);
+    let file_url = format!("file://{}", path.to_string_lossy());
+    if let Err(e) = tx.send(file_url.clone()).await {
+        warn!("Failed to send file URL to processor: {}", e);
     } else {
-        info!("File successfully queued: {:?}", path);
+        info!("File successfully queued as URL: {}", file_url);
     }
 }
 

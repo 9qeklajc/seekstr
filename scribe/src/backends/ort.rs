@@ -1,7 +1,6 @@
-use crate::processor::{ProcessedContent, Processor};
+use crate::processor::{FileType, ProcessedContent, Processor, get_file_type_from_url};
 use anyhow::Result;
 use async_trait::async_trait;
-use std::path::Path;
 use tracing::info;
 
 pub struct OrtBackend;
@@ -14,29 +13,29 @@ impl OrtBackend {
 
 #[async_trait]
 impl Processor for OrtBackend {
-    async fn process(&self, file_path: &Path) -> Result<ProcessedContent> {
-        info!("ORT (ONNX Runtime) backend processing: {:?}", file_path);
+    async fn process(&self, url: &str) -> Result<ProcessedContent> {
+        info!("ORT (ONNX Runtime) backend processing: {}", url);
 
-        let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let file_type = get_file_type_from_url(url);
 
-        match extension {
-            "mp3" | "mp4" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "webm" | "avi" | "mov"
-            | "mkv" | "wmv" => Ok(ProcessedContent::Transcript {
+        match file_type {
+            FileType::Audio | FileType::Video => Ok(ProcessedContent::Transcript {
                 text: format!(
                     "ORT backend placeholder - would process audio/video: {}",
-                    file_path.display()
+                    url
                 ),
                 language: Some("unknown".to_string()),
                 duration_ms: None,
+                summary: None,
             }),
-            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => Ok(ProcessedContent::Description {
-                description: format!(
-                    "ORT backend placeholder - would process image: {}",
-                    file_path.display()
-                ),
+            FileType::Image => Ok(ProcessedContent::Description {
+                description: format!("ORT backend placeholder - would process image: {}", url),
                 tags: vec!["ort".to_string(), "placeholder".to_string()],
             }),
-            _ => Err(anyhow::anyhow!("Unsupported file type: {}", extension)),
+            FileType::YouTube => Err(anyhow::anyhow!(
+                "ORT backend cannot process YouTube URLs. Use the YouTube backend instead."
+            )),
+            FileType::Unknown => Err(anyhow::anyhow!("Unsupported file type for URL: {}", url)),
         }
     }
 
