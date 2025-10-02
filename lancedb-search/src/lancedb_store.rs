@@ -10,7 +10,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{Connection, connect};
 use std::sync::Arc;
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.50;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.40;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -304,7 +304,7 @@ impl LanceDBStore {
                         .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
                     println!(
-                        "Results sorted by relevance (distance), filtered by relevance > 0.54:"
+                        "Results sorted by relevance (distance), filtered by relevance > 0.40:"
                     );
                     for (_i, (id, distance)) in results_with_scores.iter().enumerate() {
                         let relevance_score = (1.0 / (1.0 + distance)).max(0.0).min(1.0);
