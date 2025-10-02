@@ -213,7 +213,7 @@ impl LanceDBStore {
     pub async fn search_similar_with_filters(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
+        limit: usize,
         author: Option<&str>,
         kind: Option<i32>,
         min_created_at: Option<i64>,
@@ -221,7 +221,7 @@ impl LanceDBStore {
     ) -> Result<Vec<String>> {
         self.search_similar_with_filters_and_range(
             query_embedding,
-            1000,
+            limit,
             author,
             kind,
             min_created_at,
@@ -236,7 +236,7 @@ impl LanceDBStore {
     pub async fn search_similar_with_filters_and_range(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
+        limit: usize,
         author: Option<&str>,
         kind: Option<i32>,
         min_created_at: Option<i64>,
@@ -253,7 +253,8 @@ impl LanceDBStore {
         let mut vector_query = table
             .query()
             .nearest_to(query_embedding)?
-            .column("content_embedding");
+            .column("content_embedding")
+            .limit(limit);
 
         let mut filter_clauses = Vec::new();
 

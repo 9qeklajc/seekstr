@@ -104,7 +104,7 @@ impl EmbeddingSearchService {
         request: &EventSearchRequest,
     ) -> Result<EventSearchResponse> {
         let query = request.get_search_query().unwrap_or("");
-        let limit = request.limit.unwrap_or(50);
+        let limit = request.limit.unwrap_or(200);
 
         let query_embedding = self.embedding_service.generate_embedding(query).await?;
 
