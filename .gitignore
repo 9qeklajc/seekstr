@@ -3,3 +3,5 @@
 .env
 .claude/
 target/
+seekstr_state.json
+config.toml
