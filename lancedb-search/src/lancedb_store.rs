@@ -10,7 +10,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{Connection, connect};
 use std::sync::Arc;
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.40;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.45;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
