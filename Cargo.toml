@@ -1,5 +1,5 @@
 [workspace]
-members = ["scribe", "lancedb-search"]
+members = ["scribe", "lancedb-search", "qdrant-search"]
 resolver = "2"
 
 [workspace.package]
