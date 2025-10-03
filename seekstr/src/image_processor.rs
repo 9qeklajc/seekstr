@@ -66,8 +66,8 @@ impl ImageProcessor {
             let new_height = (height as f32 * ratio) as u32;
             info!("Resizing image {}x{} -> {}x{}", width, height, new_width, new_height);
 
-            // Resize the image
-            img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3)
+            // Resize the image with fast filtering
+            img.resize(new_width, new_height, image::imageops::FilterType::Nearest)
         } else {
             img
         };
@@ -103,7 +103,7 @@ impl ImageProcessor {
                     "content": [
                         {
                             "type": "text",
-                            "text": "Describe this image in detail. Include objects, people, text, colors, and scene context."
+                            "text": "Describe image contents."
                         },
                         {
                             "type": "image_url",
@@ -114,7 +114,8 @@ impl ImageProcessor {
                     ]
                 }
             ],
-            "max_tokens": 500
+            "max_tokens": 1000,
+            "temperature": 0
         });
 
         // Build the API endpoint URL
