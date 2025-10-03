@@ -244,7 +244,7 @@ impl QdrantStore {
 
         let search_result = self.client.search_points(search_request).await?;
 
-        let event_ids: Vec<String> = search_result
+        let mut event_ids: Vec<String> = search_result
             .result
             .iter()
             .filter_map(|point| {
@@ -256,6 +256,7 @@ impl QdrantStore {
             })
             .collect();
 
+        event_ids.reverse();
         Ok(event_ids)
     }
 
