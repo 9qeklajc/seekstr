@@ -9,7 +9,7 @@ use qdrant_client::{Payload, Qdrant};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.3;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.35;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
