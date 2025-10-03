@@ -9,7 +9,7 @@ use qdrant_client::{Payload, Qdrant};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.4;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.5;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -137,9 +137,25 @@ impl QdrantStore {
             )
             .await?;
 
+        println!(
+            "Search scores: {:?}",
+            search_result
+                .result
+                .iter()
+                .map(|p| p.score)
+                .collect::<Vec<_>>()
+        );
+
         let event_ids: Vec<String> = search_result
             .result
             .iter()
+            .filter(|point| {
+                println!(
+                    "Point score: {}, threshold: {}",
+                    point.score, MIN_RELEVANCE_THRESHOLD
+                );
+                point.score > MIN_RELEVANCE_THRESHOLD
+            })
             .filter_map(|point| {
                 point
                     .payload
@@ -149,6 +165,7 @@ impl QdrantStore {
             })
             .collect();
 
+        println!("Filtered event_ids: {:?}", event_ids);
         Ok(event_ids)
     }
 
@@ -244,9 +261,25 @@ impl QdrantStore {
 
         let search_result = self.client.search_points(search_request).await?;
 
-        let mut event_ids: Vec<String> = search_result
+        println!(
+            "Filtered search scores: {:?}",
+            search_result
+                .result
+                .iter()
+                .map(|p| p.score)
+                .collect::<Vec<_>>()
+        );
+
+        let event_ids: Vec<String> = search_result
             .result
             .iter()
+            .filter(|point| {
+                println!(
+                    "Filtered point score: {}, threshold: {}",
+                    point.score, MIN_RELEVANCE_THRESHOLD
+                );
+                point.score > MIN_RELEVANCE_THRESHOLD
+            })
             .filter_map(|point| {
                 point
                     .payload
@@ -256,7 +289,8 @@ impl QdrantStore {
             })
             .collect();
 
-        event_ids.reverse();
+        println!("Filtered search event_ids: {:?}", event_ids);
+
         Ok(event_ids)
     }
 
