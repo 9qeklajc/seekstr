@@ -133,24 +133,12 @@ impl QdrantStore {
                     query_embedding.to_vec(),
                     limit as u64,
                 )
-                .with_payload(true)
-                .params(SearchParamsBuilder::default().exact(false)),
+                .with_payload(true),
             )
             .await?;
 
-        let mut filtered_results: Vec<_> = search_result
+        let event_ids: Vec<String> = search_result
             .result
-            .iter()
-            .filter(|point| point.score > MIN_RELEVANCE_THRESHOLD)
-            .collect();
-
-        filtered_results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        let event_ids: Vec<String> = filtered_results
             .iter()
             .filter_map(|point| {
                 point
@@ -250,26 +238,14 @@ impl QdrantStore {
         .params(SearchParamsBuilder::default().exact(false));
 
         if !filter_conditions.is_empty() {
-            let filter = Filter::should(filter_conditions);
+            let filter = Filter::must(filter_conditions);
             search_request = search_request.filter(filter);
         }
 
         let search_result = self.client.search_points(search_request).await?;
 
-        let mut filtered_results: Vec<_> = search_result
+        let event_ids: Vec<String> = search_result
             .result
-            .iter()
-            .filter(|point| point.score > MIN_RELEVANCE_THRESHOLD)
-            .collect();
-
-        filtered_results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        println!("{:?}", filtered_results);
-        let event_ids: Vec<String> = filtered_results
             .iter()
             .filter_map(|point| {
                 point
