@@ -9,7 +9,7 @@ use qdrant_client::{Payload, Qdrant};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.35;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.4;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -267,8 +267,8 @@ impl QdrantStore {
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        println!("{:?}", filtered_results);
 
+        println!("{:?}", filtered_results);
         let event_ids: Vec<String> = filtered_results
             .iter()
             .filter_map(|point| {
