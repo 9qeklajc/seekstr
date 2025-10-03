@@ -1,16 +1,15 @@
 use crate::nostr::NostrEventWithEmbedding;
 use anyhow::Result;
-use qdrant_client::{
-    qdrant::{
-        vectors_config::Config, CreateCollectionBuilder, Distance, Filter, PointId, PointStruct,
-        Range, SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder, VectorsConfig,
-    },
-    Payload, Qdrant,
+use qdrant_client::qdrant::{
+    Condition, CreateCollectionBuilder, Distance, Filter, PointId, PointStruct,
+    ScalarQuantizationBuilder, SearchParamsBuilder, SearchPointsBuilder, UpsertPointsBuilder,
+    VectorParamsBuilder,
 };
+use qdrant_client::{Payload, Qdrant};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const MIN_RELEVANCE_THRESHOLD: f32 = 0.5;
+const MIN_RELEVANCE_THRESHOLD: f32 = 0.45;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -58,16 +57,11 @@ impl QdrantStore {
             .any(|c| c.name == self.collection_name);
 
         if !collection_exists {
-            let vectors_config = VectorsConfig {
-                config: Some(Config::Params(
-                    VectorParamsBuilder::new(1024, Distance::Cosine).build(),
-                )),
-            };
-
             self.client
                 .create_collection(
                     CreateCollectionBuilder::new(&self.collection_name)
-                        .vectors_config(vectors_config),
+                        .vectors_config(VectorParamsBuilder::new(768, Distance::Cosine))
+                        .quantization_config(ScalarQuantizationBuilder::default()),
                 )
                 .await?;
         }
@@ -129,31 +123,25 @@ impl QdrantStore {
     pub async fn search_similar(
         &self,
         query_embedding: &[f32],
-        _limit: usize,
-    ) -> Result<Vec<String>> {
-        self.search_similar_with_range(query_embedding, 1000, None, Some(0.8))
-            .await
-    }
-
-    pub async fn search_similar_with_range(
-        &self,
-        query_embedding: &[f32],
         limit: usize,
-        _lower_bound: Option<f32>,
-        _upper_bound: Option<f32>,
     ) -> Result<Vec<String>> {
-        let search_request = SearchPointsBuilder::new(
-            &self.collection_name,
-            query_embedding.to_vec(),
-            limit as u64,
-        )
-        .with_payload(true);
-
-        let search_result = self.client.search_points(search_request).await?;
+        let search_result = self
+            .client
+            .search_points(
+                SearchPointsBuilder::new(
+                    &self.collection_name,
+                    query_embedding.to_vec(),
+                    limit as u64,
+                )
+                .with_payload(true)
+                .params(SearchParamsBuilder::default().exact(false)),
+            )
+            .await?;
 
         let event_ids: Vec<String> = search_result
             .result
             .iter()
+            .filter(|point| point.score > MIN_RELEVANCE_THRESHOLD)
             .filter_map(|point| {
                 point
                     .payload
@@ -175,35 +163,10 @@ impl QdrantStore {
         min_created_at: Option<i64>,
         max_created_at: Option<i64>,
     ) -> Result<Vec<String>> {
-        self.search_similar_with_filters_and_range(
-            query_embedding,
-            limit,
-            author,
-            kind,
-            min_created_at,
-            max_created_at,
-            None,
-            Some(0.8),
-        )
-        .await
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn search_similar_with_filters_and_range(
-        &self,
-        query_embedding: &[f32],
-        limit: usize,
-        author: Option<&str>,
-        kind: Option<i32>,
-        min_created_at: Option<i64>,
-        max_created_at: Option<i64>,
-        _lower_bound: Option<f32>,
-        _upper_bound: Option<f32>,
-    ) -> Result<Vec<String>> {
         let mut filter_conditions = Vec::new();
 
         if let Some(author) = author {
-            use qdrant_client::qdrant::{Condition, FieldCondition, Match};
+            use qdrant_client::qdrant::{FieldCondition, Match};
             filter_conditions.push(Condition {
                 condition_one_of: Some(qdrant_client::qdrant::condition::ConditionOneOf::Field(
                     FieldCondition {
@@ -220,7 +183,7 @@ impl QdrantStore {
         }
 
         if let Some(kind) = kind {
-            use qdrant_client::qdrant::{Condition, FieldCondition, Match};
+            use qdrant_client::qdrant::{FieldCondition, Match};
             filter_conditions.push(Condition {
                 condition_one_of: Some(qdrant_client::qdrant::condition::ConditionOneOf::Field(
                     FieldCondition {
@@ -237,12 +200,12 @@ impl QdrantStore {
         }
 
         if let Some(min_created) = min_created_at {
-            use qdrant_client::qdrant::{Condition, FieldCondition};
+            use qdrant_client::qdrant::FieldCondition;
             filter_conditions.push(Condition {
                 condition_one_of: Some(qdrant_client::qdrant::condition::ConditionOneOf::Field(
                     FieldCondition {
                         key: "created_at".to_string(),
-                        range: Some(Range {
+                        range: Some(qdrant_client::qdrant::Range {
                             gte: Some(min_created as f64),
                             ..Default::default()
                         }),
@@ -253,12 +216,12 @@ impl QdrantStore {
         }
 
         if let Some(max_created) = max_created_at {
-            use qdrant_client::qdrant::{Condition, FieldCondition};
+            use qdrant_client::qdrant::FieldCondition;
             filter_conditions.push(Condition {
                 condition_one_of: Some(qdrant_client::qdrant::condition::ConditionOneOf::Field(
                     FieldCondition {
                         key: "created_at".to_string(),
-                        range: Some(Range {
+                        range: Some(qdrant_client::qdrant::Range {
                             lte: Some(max_created as f64),
                             ..Default::default()
                         }),
@@ -273,7 +236,8 @@ impl QdrantStore {
             query_embedding.to_vec(),
             limit as u64,
         )
-        .with_payload(true);
+        .with_payload(true)
+        .params(SearchParamsBuilder::default().exact(false));
 
         if !filter_conditions.is_empty() {
             let filter = Filter::must(filter_conditions);
@@ -281,64 +245,24 @@ impl QdrantStore {
         }
 
         let search_result = self.client.search_points(search_request).await?;
-        println!("{:?}", search_result);
 
-        let mut results_with_scores: Vec<(String, f32, f32)> = Vec::new();
+        let event_ids: Vec<String> = search_result
+            .result
+            .iter()
+            .filter(|point| point.score > MIN_RELEVANCE_THRESHOLD)
+            .filter_map(|point| {
+                point
+                    .payload
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
 
-        for point in search_result.result.iter() {
-            let id = match point.payload.get("id").and_then(|v| v.as_str()) {
-                Some(id_str) => id_str.to_string(),
-                None => continue,
-            };
-
-            let distance = point.score;
-
-            if point.score > MIN_RELEVANCE_THRESHOLD {
-                results_with_scores.push((id, distance, point.score));
-            }
-        }
-
-        results_with_scores
-            .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-
-        println!(
-            "Results sorted by relevance (highest first), filtered by relevance > {:.2}:",
-            MIN_RELEVANCE_THRESHOLD
-        );
-
-        let mut event_ids = Vec::new();
-        for (i, (id, distance, relevance_score)) in results_with_scores.iter().enumerate() {
-            println!(
-                "  {}: {} (distance: {:.4}, relevance: {:.4})",
-                i + 1,
-                id,
-                distance,
-                relevance_score
-            );
-            event_ids.push(id.clone());
-        }
-
-        println!("{:?}", event_ids);
         Ok(event_ids)
     }
 
     pub async fn create_index(&self) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn create_index_with_type(&self, _index_type: String) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn create_ivf_flat_index(&self, _num_partitions: u32) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn create_ivf_flat_index_with_distance(
-        &self,
-        _num_partitions: u32,
-        _distance_type: String,
-    ) -> Result<()> {
         Ok(())
     }
 }

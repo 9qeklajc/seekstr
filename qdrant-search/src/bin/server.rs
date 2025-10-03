@@ -44,6 +44,12 @@ async fn main() -> Result<()> {
     let qdrant_url =
         std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://localhost:6334".to_string());
 
+    let server_host = std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let server_port = std::env::var("SERVER_PORT")
+        .unwrap_or_else(|_| "3009".to_string())
+        .parse::<u16>()
+        .unwrap_or(3009);
+
     let embedding_service = Arc::new(
         EmbeddingSearchService::new(embedding_service, &qdrant_url, "nostr_events").await?,
     );
@@ -70,8 +76,9 @@ async fn main() -> Result<()> {
         .with_state(state)
         .layer(CorsLayer::permissive());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3009").await?;
-    println!("Qdrant Search Server running on http://0.0.0.0:3009");
+    let bind_address = format!("{}:{}", server_host, server_port);
+    let listener = tokio::net::TcpListener::bind(&bind_address).await?;
+    println!("Qdrant Search Server running on http://{}", bind_address);
     println!("Endpoints:");
     println!("  GET  /health - Health check");
     println!("  GET  /events - Search events with filters");

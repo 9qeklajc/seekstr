@@ -117,7 +117,7 @@ impl EmbeddingSearchService {
 
         match self
             .qdrant_store
-            .search_similar_with_filters(&query_embedding, limit, author, kind, None, None)
+            .search_similar_with_filters(&query_embedding, limit, None, None, None, None)
             .await
         {
             Ok(event_ids) => Ok(EventSearchResponse {

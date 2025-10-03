@@ -1,0 +1,38 @@
+# Rust
+target/
+Cargo.lock
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Development files
+.env
+.env.*
+docker-compose*.yml
+Dockerfile*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+examples/
+tests/
+
+# Temporary files
+tmp/
+temp/
